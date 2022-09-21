@@ -149,10 +149,37 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype) !T {
 pub fn readFree(gpa: std.mem.Allocator, value: anytype) void {
     const T = @TypeOf(value);
     switch (@typeInfo(T)) {
+        .Array, .Vector => {
+            for (value) |element| {
+                borsh.readFree(gpa, element);
+            }
+        },
+        .Struct => |info| {
+            inline for (info.fields) |field| {
+                borsh.readFree(gpa, @field(value, field.name));
+            }
+        },
+        .Optional => {
+            if (value) |v| {
+                borsh.readFree(gpa, v);
+            }
+        },
+        .Union => |info| {
+            inline for (info.fields) |field| {
+                if (value == @field(T, field.name)) {
+                    return borsh.readFree(gpa, @field(value, field.name));
+                }
+            }
+        },
         .Pointer => |info| {
             switch (info.size) {
                 .One => gpa.destroy(value),
-                .Slice => gpa.free(value),
+                .Slice => {
+                    for (value) |item| {
+                        borsh.readFree(gpa, item);
+                    }
+                    gpa.free(value);
+                },
                 else => {},
             }
         },
