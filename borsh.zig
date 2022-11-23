@@ -86,7 +86,9 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype) !T {
         .Struct => |info| {
             var data: T = undefined;
             inline for (info.fields) |field| {
-                @field(data, field.name) = try borsh.read(gpa, field.field_type, reader);
+                if (!field.is_comptime) {
+                    @field(data, field.name) = try borsh.read(gpa, field.field_type, reader);
+                }
             }
             return data;
         },
@@ -156,7 +158,9 @@ pub fn readFree(gpa: std.mem.Allocator, value: anytype) void {
         },
         .Struct => |info| {
             inline for (info.fields) |field| {
-                borsh.readFree(gpa, @field(value, field.name));
+                if (!field.is_comptime) {
+                    borsh.readFree(gpa, @field(value, field.name));
+                }
             }
         },
         .Optional => {
@@ -205,8 +209,10 @@ pub fn write(writer: anytype, data: anytype) !void {
         .Struct => |info| {
             var maybe_err: anyerror!void = {};
             inline for (info.fields) |field| {
-                if (@as(?anyerror!void, maybe_err catch null) != null) {
-                    maybe_err = borsh.write(writer, @field(data, field.name));
+                if (!field.is_comptime) {
+                    if (@as(?anyerror!void, maybe_err catch null) != null) {
+                        maybe_err = borsh.write(writer, @field(data, field.name));
+                    }
                 }
             }
             return maybe_err;
