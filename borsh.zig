@@ -75,8 +75,8 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype) !T {
             inline for (info.fields) |field| {
                 if (raw_tag == @field(tag_type, field.name)) {
                     // https://github.com/ziglang/zig/issues/7866
-                    if (field.field_type == void) return @unionInit(T, field.name, {});
-                    const payload = try borsh.read(gpa, field.field_type, reader);
+                    if (field.type == void) return @unionInit(T, field.name, {});
+                    const payload = try borsh.read(gpa, field.type, reader);
                     return @unionInit(T, field.name, payload);
                 }
             }
@@ -87,7 +87,7 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype) !T {
             var data: T = undefined;
             inline for (info.fields) |field| {
                 if (!field.is_comptime) {
-                    @field(data, field.name) = try borsh.read(gpa, field.field_type, reader);
+                    @field(data, field.name) = try borsh.read(gpa, field.type, reader);
                 }
             }
             return data;
@@ -194,11 +194,11 @@ pub fn readFree(gpa: std.mem.Allocator, value: anytype) void {
 pub fn write(writer: anytype, data: anytype) !void {
     const T = @TypeOf(data);
     switch (@typeInfo(T)) {
-        .Type, .Void, .NoReturn, .Undefined, .Null, .Fn, .BoundFn, .Opaque, .Frame, .AnyFrame => return,
+        .Type, .Void, .NoReturn, .Undefined, .Null, .Fn, .Opaque, .Frame, .AnyFrame => return,
         .Bool => return writer.writeByte(@boolToInt(data)),
-        .Enum => return borsh.write(writer, try std.math.cast(u8, @enumToInt(data))),
+        .Enum => return borsh.write(writer, std.math.cast(u8, @enumToInt(data)) orelse return error.EnumTooLarge),
         .Union => |info| {
-            try borsh.write(writer, try std.math.cast(u8, @enumToInt(data)));
+            try borsh.write(writer, std.math.cast(u8, @enumToInt(data)) orelse return error.EnumTooLarge);
             inline for (info.fields) |field| {
                 if (data == @field(T, field.name)) {
                     return borsh.write(writer, @field(data, field.name));
@@ -237,7 +237,7 @@ pub fn write(writer: anytype, data: anytype) !void {
                 .One => return borsh.write(writer, data.*),
                 .Many => return borsh.write(writer, std.mem.span(data)),
                 .Slice => {
-                    try borsh.write(writer, try std.math.cast(u32, data.len));
+                    try borsh.write(writer, std.math.cast(u32, data.len) orelse return error.DataTooLarge);
                     for (data) |element| {
                         try borsh.write(writer, element);
                     }
