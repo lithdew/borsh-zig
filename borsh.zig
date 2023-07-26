@@ -36,7 +36,7 @@ pub fn Option(comptime T: type) type {
 pub fn sizeOf(data: anytype) usize {
     var stream = std.io.countingWriter(std.io.null_writer);
     borsh.write(stream.writer(), data) catch unreachable;
-    return @intCast(usize, stream.bytes_written);
+    return @as(usize, @intCast(stream.bytes_written));
 }
 
 pub fn readFromSlice(gpa: std.mem.Allocator, comptime T: type, slice: []const u8) !T {
@@ -66,7 +66,7 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype) !T {
         },
         .Enum => |info| {
             const tag = try borsh.read(gpa, u8, reader);
-            return std.meta.intToEnum(T, @intCast(info.tag_type, tag));
+            return std.meta.intToEnum(T, @as(info.tag_type, @intCast(tag)));
         },
         .Union => |info| {
             const tag_type = info.tag_type orelse @compileError("Only tagged unions may be read.");
@@ -101,14 +101,14 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype) !T {
         },
         .Array => |info| {
             var data: T = undefined;
-            for (data) |*element| {
+            for (&data) |*element| {
                 element.* = try borsh.read(gpa, info.child, reader);
             }
             return data;
         },
         .Vector => |info| {
             var data: T = undefined;
-            for (data) |*element| {
+            for (&data) |*element| {
                 element.* = try borsh.read(gpa, info.child, reader);
             }
             return data;
@@ -134,7 +134,7 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype) !T {
         },
         .ComptimeFloat => return borsh.read(gpa, f64, reader),
         .Float => |info| {
-            const data = @bitCast(T, try reader.readBytesNoEof((info.bits + 7) / 8));
+            const data = @as(T, @bitCast(try reader.readBytesNoEof((info.bits + 7) / 8)));
             if (std.math.isNan(data)) {
                 return error.FloatIsNan;
             }
@@ -195,10 +195,10 @@ pub fn write(writer: anytype, data: anytype) !void {
     const T = @TypeOf(data);
     switch (@typeInfo(T)) {
         .Type, .Void, .NoReturn, .Undefined, .Null, .Fn, .Opaque, .Frame, .AnyFrame => return,
-        .Bool => return writer.writeByte(@boolToInt(data)),
-        .Enum => return borsh.write(writer, std.math.cast(u8, @enumToInt(data)) orelse return error.EnumTooLarge),
+        .Bool => return writer.writeByte(@intFromBool(data)),
+        .Enum => return borsh.write(writer, std.math.cast(u8, @intFromEnum(data)) orelse return error.EnumTooLarge),
         .Union => |info| {
-            try borsh.write(writer, std.math.cast(u8, @enumToInt(data)) orelse return error.EnumTooLarge);
+            try borsh.write(writer, std.math.cast(u8, @intFromEnum(data)) orelse return error.EnumTooLarge);
             inline for (info.fields) |field| {
                 if (data == @field(T, field.name)) {
                     return borsh.write(writer, @field(data, field.name));
@@ -284,10 +284,10 @@ test "borsh: serialize and deserialize" {
         @as(u32, std.math.maxInt(u32)),
         @as(u64, std.math.maxInt(u64)),
 
-        @as(f32, std.math.f32_min),
-        @as(f64, std.math.f64_min),
-        @as(f32, std.math.f32_max),
-        @as(f64, std.math.f64_max),
+        @as(f32, std.math.floatMin(f32)),
+        @as(f64, std.math.floatMin(f64)),
+        @as(f32, std.math.floatMax(f32)),
+        @as(f64, std.math.floatMax(f64)),
 
         [_]u8{ 0, 1, 2, 3 },
     }) |expected| {
